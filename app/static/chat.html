@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KnowFlow AI Search</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <!-- Vue.js -->
+  <script src="https://cdn.jsdelivr.net/npm/vue@3.2.47/dist/vue.global.prod.js"></script>
+  <!-- Marked for Markdown parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@5.0.2/marked.min.js"></script>
+  <!-- Highlight.js for syntax highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/monokai-sublime.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+
+  <style>
+    body {
+      background-color: #f8f9fa;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      overflow: hidden;
+    }
+    .sidebar {
+      height: 100vh;
+      width: 280px;
+      background-color: #202123;
+      color: white;
+      position: fixed;
+      top: 0;
+      left: 0;
+      overflow-y: auto;
+      padding: 16px;
+      transition: width 0.3s;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .sidebar-header h5 {
+      flex-grow: 1;
+      text-align: center;
+      margin: 0;
+    }
+    .toggle-btn, .new-chat-btn {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 20px;
+      cursor: pointer;
+    }
+    .sidebar-content {
+      flex-grow: 1;
+      overflow-y: auto;
+    }
+    .sidebar-footer {
+      margin-top: auto;
+      padding-top: 16px;
+    }
+    .history-item {
+      position: relative;
+      padding: 10px;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      cursor: pointer;
+      background-color: #343541;
+      transition: background-color 0.2s ease;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .history-item:hover {
+      background-color: #444654;
+    }
+    .chat-container {
+      margin-left: 280px;
+      padding: 20px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .messages-wrapper {
+      flex-grow: 1;
+      overflow-y: auto;
+      padding-bottom: 100px;
+    }
+    .message {
+      margin: 20px 0;
+      display: flex;
+      align-items: flex-start;
+      max-w: 80%;
+    }
+    .message.user {
+      margin-left: auto;
+      flex-direction: row-reverse;
+    }
+    .message-content {
+      padding: 12px 18px;
+      border-radius: 18px;
+      line-height: 1.6;
+      font-size: 16px;
+    }
+    .user .message-content {
+      background-color: #007bff;
+      color: white;
+    }
+    .bot .message-content {
+      background-color: #ffffff;
+      color: #333;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    .input-container {
+      position: fixed;
+      bottom: 25px;
+      left: 300px;
+      right: 20px;
+      width: calc(100% - 320px);
+    }
+    .input-group {
+      background-color: #ffffff;
+      border: 1px solid #ddd;
+      border-radius: 24px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      padding: 8px;
+    }
+    .input-group input {
+      border: none;
+      box-shadow: none;
+    }
+    .markdown-content pre {
+      position: relative;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background-color: #6c757d;
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+    .markdown-content pre:hover .copy-btn {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 侧边栏 -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h5 class="m-0">历史对话</h5>
+        <button class="new-chat-btn" title="新聊天" @click="startNewChat">
+          <i class="bi bi-plus-square"></i>
+        </button>
+      </div>
+      <div class="sidebar-content">
+        <div v-if="chatHistory.length === 0" class="text-center text-muted mt-4">
+          暂无历史对话
+        </div>
+        <div v-else>
+          <div v-for="session in chatHistory" :key="session.id" class="history-item" @click="loadSession(session.id)">
+            {{ session.summary }}
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-footer">
+        <a href="/mcp" class="btn btn-dark w-100 mb-2">MCP Servers</a>
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="webSearchSwitch" v-model="webSearch">
+          <label class="form-check-label" for="webSearchSwitch">联网搜索</label>
+        </div>
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="agentModeSwitch" v-model="agentMode">
+          <label class="form-check-label" for="agentModeSwitch">启用Agent</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- 对话区域 -->
+    <div class="chat-container">
+      <div class="messages-wrapper" ref="chatContainer">
+        <div v-for="(msg, index) in messages" :key="index" class="message" :class="{ user: msg.role === 'user', bot: msg.role === 'assistant' }">
+          <div class="message-content">
+            <div class="markdown-content" v-html="renderMarkdown(msg.content)"></div>
+          </div>
+        </div>
+      </div>
+      <div class="input-container">
+        <div class="input-group">
+          <input v-model="userInput" @keyup.enter="sendMessage" type="text" class="form-control" placeholder="输入您的问题...">
+          <button class="btn btn-primary" @click="sendMessage">发送</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { createApp } = Vue;
+    
+    // API基础URL留空，将使用相对路径，自动指向当前服务地址
+    const API_BASE_URL = '';
+    
+    createApp({
+      data() {
+        return {
+          userInput: '',
+          messages: [],
+          chatHistory: [],
+          currentSessionId: null,
+          webSearch: false,
+          agentMode: false,
+          availableTools: [], // 存储可用的Agent工具
+          toolsFetched: false, // 标记是否已获取过工具
+        };
+      },
+      mounted() {
+        this.fetchChatHistory();
+        if (!this.currentSessionId) {
+            this.messages.push({ role: 'assistant', content: '您好！请问有什么可以帮助您的吗？' });
+        }
+      },
+      methods: {
+        renderMarkdown(text) {
+          if (!text) return '';
+          const rawHtml = marked.parse(text);
+          const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
+          doc.querySelectorAll('pre').forEach(pre => {
+            const button = document.createElement('button');
+            button.innerText = 'Copy';
+            button.className = 'copy-btn';
+            button.onclick = () => {
+              const code = pre.querySelector('code').innerText;
+              navigator.clipboard.writeText(code).then(() => {
+                button.innerText = 'Copied!';
+                setTimeout(() => { button.innerText = 'Copy'; }, 2000);
+              });
+            };
+            pre.appendChild(button);
+          });
+          return doc.body.innerHTML;
+        },
+        async fetchChatHistory() {
+          try {
+            const response = await fetch(`${API_BASE_URL}/api/chat/history`);
+            if (!response.ok) throw new Error('Network response was not ok');
+            this.chatHistory = await response.json();
+          } catch (error) {
+            console.error('获取历史对话失败:', error);
+          }
+        },
+        async fetchAgentTools() {
+            // 移除旧的提示消息
+            const loadingMsgIndex = this.messages.findIndex(m => m.content === '正在为您查找可用的Agent工具...');
+            if (loadingMsgIndex !== -1) {
+                this.messages.splice(loadingMsgIndex, 1);
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/mcp/tools`);
+                if (!response.ok) throw new Error('Network response was not ok');
+                this.availableTools = await response.json();
+                this.toolsFetched = true;
+
+                let toolMessageContent = '';
+                if (this.availableTools.length > 0) {
+                    toolMessageContent = '已为您启用Agent模式，当前可用的工具有：\n\n';
+                    this.availableTools.forEach(tool => {
+                        toolMessageContent += `- **${tool.name}**: ${tool.description}\n`;
+                    });
+                } else {
+                    toolMessageContent = 'Agent模式已启用，但当前没有可用的工具。';
+                }
+                this.messages.push({ role: 'assistant', content: toolMessageContent });
+
+            } catch (error) {
+                console.error('获取Agent工具失败:', error);
+                this.messages.push({ role: 'assistant', content: '获取可用工具列表失败，请检查后台服务是否正常。' });
+            } finally {
+                this.scrollToBottom();
+            }
+        },
+        async loadSession(sessionId) {
+          if (this.currentSessionId === sessionId) return;
+          try {
+            const response = await fetch(`${API_BASE_URL}/api/chat/session/${sessionId}`);
+            if (!response.ok) throw new Error('Network response was not ok');
+            const data = await response.json();
+            this.messages = data.messages;
+            this.currentSessionId = sessionId;
+            this.scrollToBottom();
+          } catch (error) {
+            console.error('加载对话失败:', error);
+          }
+        },
+        async sendMessage() {
+          if (!this.userInput.trim()) return;
+
+          const userMessage = { role: 'user', content: this.userInput };
+          this.messages.push(userMessage);
+          this.userInput = '';
+          this.scrollToBottom();
+
+          // 添加一个临时的"思考中"消息
+          const thinkingMessageIndex = this.messages.length;
+          this.messages.push({ role: 'assistant', content: '...' });
+          this.scrollToBottom();
+          
+          try {
+            let apiUrl = `${API_BASE_URL}/api/stream?query=${encodeURIComponent(userMessage.content)}`;
+            if (this.currentSessionId) {
+              apiUrl += `&session_id=${this.currentSessionId}`;
+            }
+            if (this.webSearch) apiUrl += `&web_search=true`;
+            if (this.agentMode) apiUrl += `&agent_mode=true`;
+            
+            const response = await fetch(apiUrl);
+            if (!response.body) throw new Error("Response body is null");
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder("utf-8");
+            let buffer = "";
+            let fullResponse = "";
+
+            // 移除"思考中"消息
+            this.messages.splice(thinkingMessageIndex, 1);
+            // 添加一个新的空消息用于填充流式数据
+            this.messages.push({ role: 'assistant', content: '' });
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n');
+              buffer = lines.pop(); // Keep the last partial line in buffer
+
+              for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                  try {
+                    const jsonData = JSON.parse(line.substring(6));
+                    if (jsonData.event === 'done') {
+                      if(jsonData.session_id && !this.currentSessionId) {
+                          this.currentSessionId = jsonData.session_id;
+                      }
+                      this.fetchChatHistory(); // Update history after stream ends
+                      return;
+                    }
+                    if (jsonData.content) {
+                      fullResponse += jsonData.content;
+                      this.messages[this.messages.length - 1].content = fullResponse;
+                      this.scrollToBottom();
+                    }
+                  } catch (e) {
+                    console.error('Error parsing SSE data:', e, line);
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            console.error('发送消息错误:', error);
+            this.messages[thinkingMessageIndex].content = `错误: ${error.message}`;
+          } finally {
+             this.$nextTick(() => hljs.highlightAll());
+          }
+        },
+        startNewChat() {
+          this.currentSessionId = null;
+          this.messages = [{ role: 'assistant', content: '您好！新对话开始，有什么可以帮助您的吗？' }];
+          this.userInput = '';
+        },
+        scrollToBottom() {
+          this.$nextTick(() => {
+            const container = this.$refs.chatContainer;
+            if (container) {
+                container.scrollTop = container.scrollHeight;
+            }
+          });
+        }
+      },
+      watch: {
+        'messages.length'() {
+          this.$nextTick(() => {
+            document.querySelectorAll('pre code').forEach(block => {
+              hljs.highlightElement(block);
+            });
+          });
+        },
+        agentMode(newValue) {
+            if (newValue && !this.toolsFetched) {
+                this.messages.push({ role: 'assistant', content: '正在为您查找可用的Agent工具...' });
+                this.scrollToBottom();
+                this.fetchAgentTools();
+            } else if (newValue && this.toolsFetched) {
+                // 如果已经获取过，再次开启时直接显示已有的工具
+                let toolMessageContent = '';
+                if (this.availableTools.length > 0) {
+                    toolMessageContent = 'Agent模式已再次启用，当前可用的工具有：\n\n';
+                    this.availableTools.forEach(tool => {
+                        toolMessageContent += `- **${tool.name}**: ${tool.description}\n`;
+                    });
+                } else {
+                    toolMessageContent = 'Agent模式已再次启用，但当前没有可用的工具。';
+                }
+                this.messages.push({ role: 'assistant', content: toolMessageContent });
+                this.scrollToBottom();
+            }
+        }
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

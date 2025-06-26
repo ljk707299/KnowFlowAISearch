@@ -1,0 +1,33 @@
+# Docker Compose 文件版本
+version: '3.8'
+
+# 定义服务
+services:
+  # 应用服务 (FastAPI)
+  app:
+    build:
+      context: ./app  # Dockerfile 所在的目录
+      dockerfile: Dockerfile
+    volumes:
+      - ./app:/app  # 将本地 app 目录挂载到容器的 /app 目录，方便代码热更新
+    ports:
+      # 映射端口，格式为 "主机端口:容器端口"
+      - "8000:8000"  # FastAPI 主服务端口
+      - "9001:9001"  # 天气查询 MCP 服务端口
+      - "9002:9002"  # 订单查询 MCP 服务端口
+    environment:
+      - PYTHONUNBUFFERED=1  # 设置 Python 输出不缓存，确保日志实时输出
+
+  # Nginx 反向代理服务
+  nginx:
+    image: nginx:latest  # 使用最新的 Nginx 镜像
+    ports:
+      - "80:80"    # HTTP 端口
+      - "443:443"  # HTTPS 端口
+    volumes:
+      # 挂载 Nginx 配置文件、SSL 证书和静态文件目录
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+      - ./app/static:/app/static
+    depends_on:
+      - app  # 确保 app 服务在 nginx 服务之前启动
